@@ -43,8 +43,8 @@ SNDFILE_VERSION="$(sed -n 's/^Version: *//p' "$DEPS/installed/arm64-osx-min1100-
 "$CMAKE" --build build --parallel "${MIXXX_BUILD_JOBS:-6}"
 "$CMAKE" --install build
 codesign --verify --deep --strict "$BUNDLE"
+python3 "$ROOT/script/create_personal_launcher.py"
 if [[ "$MODE" == '--build-only' ]]; then exit 0; fi
-python3 "$ROOT/script/prepare_personal_profile.py" --destination "$ROOT/build-personal-profile"
 case "$MODE" in
     --run|run) open -n "$BUNDLE" --args --settings-path "$ROOT/build-personal-profile" ;;
     --debug) lldb -- "$BINARY" --settings-path "$ROOT/build-personal-profile" ;;
