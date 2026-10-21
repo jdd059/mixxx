@@ -510,7 +510,16 @@ DlgPreferencePage* DlgPreferences::currentPage() {
 }
 
 void DlgPreferences::removePageWidget(DlgPreferencePage* pWidget) {
-    pagesWidget->removeWidget(pWidget->parentWidget()->parentWidget());
+    auto* pScrollArea = pWidget->parentWidget()->parentWidget();
+    pagesWidget->removeWidget(pScrollArea);
+    for (int index = m_allPages.size() - 1; index >= 0; --index) {
+        if (m_allPages[index].pDlg == pWidget) {
+            m_allPages.removeAt(index);
+        }
+    }
+    // The caller deletes the preference page itself. Release its empty wrapper
+    // afterward, rather than accumulating scroll areas across repeated scans.
+    pScrollArea->deleteLater();
 }
 
 void DlgPreferences::expandTreeItem(QTreeWidgetItem* pItem) {

@@ -17,7 +17,7 @@ class LegacyControllerMapping;
 class ControllerEnumerator;
 
 /// Function to sort controllers by name
-bool controllerCompare(Controller *a, Controller *b);
+bool controllerCompare(Controller* a, Controller* b);
 
 /// Manages enumeration/operation/deletion of hardware controllers.
 class ControllerManager : public QObject {
@@ -29,7 +29,7 @@ class ControllerManager : public QObject {
     static const mixxx::Duration kPollInterval;
 
     QList<Controller*> getControllers() const;
-    QList<Controller*> getControllerList(bool outputDevices=true, bool inputDevices=true);
+    QList<Controller*> getControllerList(bool outputDevices = true, bool inputDevices = true);
     ControllerLearningEventFilter* getControllerLearningEventFilter() const;
     QSharedPointer<MappingInfoEnumerator> getMainThreadUserMappingEnumerator() {
         return m_pMainThreadUserMappingEnumerator;
@@ -40,13 +40,20 @@ class ControllerManager : public QObject {
     QString getConfiguredMappingFileForDevice(const QString& name);
 
     /// Prevent other parts of Mixxx from having to manually connect to our slots
-    void setUpDevices() { emit requestSetUpDevices(); };
+    void setUpDevices() {
+        emit requestSetUpDevices();
+    };
+    // The preferences page must detach controller widgets before requesting this.
+    void rescanMidiDevices() {
+        emit requestRescanMidiDevices();
+    }
 
     static QList<QString> getMappingPaths(UserSettingsPointer pConfig);
 
   signals:
     void devicesChanged();
     void requestSetUpDevices();
+    void requestRescanMidiDevices();
     void requestShutdown();
     void requestInitialize();
     void mappingApplied(bool applied);
@@ -64,12 +71,14 @@ class ControllerManager : public QObject {
     /// only runs on start-up but maybe should instead be signaled by the
     /// preferences dialog on apply, and only open/close changed devices
     void slotSetUpDevices();
+    void slotRescanMidiDevices();
     void slotShutdown();
     /// Calls poll() on all devices that have isPolling() true.
     void slotPollDevices();
 
   private:
     void updateControllerList();
+    void openConfiguredControllers(const QList<Controller*>& deviceList);
     void startPolling();
     void stopPolling();
     void pollIfAnyControllersOpen();
