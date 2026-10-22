@@ -31,6 +31,7 @@ class DlgPrefController : public DlgPreferencePage {
 
     QUrl helpUrl() const override;
     void keyPressEvent(QKeyEvent* pEvent) override;
+    bool hasPendingChanges() const;
 
   public slots:
     /// Called when the preference dialog (not this page) is shown to the user.

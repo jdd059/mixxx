@@ -10,6 +10,9 @@ class PortMidiEnumerator : public MidiEnumerator {
     ~PortMidiEnumerator() override;
 
     QList<Controller*> queryDevices() override;
+    const QList<Controller*>& devices() const {
+        return m_devices;
+    }
 
   private:
     QList<Controller*> m_devices;

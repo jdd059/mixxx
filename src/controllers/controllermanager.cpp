@@ -82,7 +82,7 @@ QString firstAvailableFilename(QSet<QString>& filenames,
     return filename;
 }
 
-bool controllerCompare(Controller *a,Controller *b) {
+bool controllerCompare(Controller* a, Controller* b) {
     return a->getName() < b->getName();
 }
 
@@ -124,6 +124,10 @@ ControllerManager::ControllerManager(UserSettingsPointer pConfig)
             this,
             &ControllerManager::slotSetUpDevices);
     connect(this, &ControllerManager::requestShutdown, this, &ControllerManager::slotShutdown);
+    connect(this,
+            &ControllerManager::requestRescanMidiDevices,
+            this,
+            &ControllerManager::slotRescanMidiDevices);
 
     // Signal that we should run slotInitialize once our event loop has started
     // up.
@@ -187,9 +191,8 @@ void ControllerManager::slotShutdown() {
 }
 
 void ControllerManager::updateControllerList() {
-    // NOTE: Currently this function is only called on startup. If hotplug is added, changes to the
-    // controller list must be synchronized with dlgprefcontrollers to avoid dangling connections
-    // and possible crashes.
+    // Initial discovery. Manual MIDI refresh uses slotRescanMidiDevices after
+    // preferences widgets have detached their controller references.
     auto locker = lockMutex(&m_mutex);
     if (m_enumerators.isEmpty()) {
         qWarning() << "updateControllerList called but no enumerators have been added!";
@@ -229,7 +232,7 @@ QList<Controller*> ControllerManager::getControllerList(bool bOutputDevices, boo
 
     for (Controller* device : controllers) {
         if ((bOutputDevices == device->isOutputDevice()) ||
-            (bInputDevices == device->isInputDevice())) {
+                (bInputDevices == device->isInputDevice())) {
             filteredDeviceList.push_back(device);
         }
     }
@@ -245,6 +248,52 @@ void ControllerManager::slotSetUpDevices() {
 
     updateControllerList();
     const QList<Controller*> deviceList = getControllerList(false, true);
+    openConfiguredControllers(deviceList);
+}
+
+void ControllerManager::slotRescanMidiDevices() {
+    DEBUG_ASSERT_QOBJECT_THREAD_AFFINITY(this);
+    stopPolling();
+#ifdef __PORTMIDI__
+    for (int index = 0; index < m_enumerators.size(); ++index) {
+        auto* pMidi = qobject_cast<PortMidiEnumerator*>(m_enumerators[index]);
+        if (!pMidi) {
+            continue;
+        }
+        const QList<Controller*> oldDevices = pMidi->devices();
+        {
+            auto locker = lockMutex(&m_mutex);
+            for (Controller* pController : oldDevices) {
+                m_controllers.removeAll(pController);
+            }
+        }
+        // Close streams without disabling their saved mappings. PortMidi must
+        // be terminated and initialized again to refresh its device snapshot.
+        for (Controller* pController : oldDevices) {
+            if (pController->isOpen()) {
+                pController->close();
+            }
+        }
+        delete pMidi;
+        pMidi = new PortMidiEnumerator();
+        m_enumerators[index] = pMidi;
+        const QList<Controller*> newDevices = pMidi->queryDevices();
+        {
+            auto locker = lockMutex(&m_mutex);
+            m_controllers.append(newDevices);
+        }
+        openConfiguredControllers(newDevices);
+        break;
+    }
+#endif
+    // HID/bulk enumerators and their objects are retained. Always notify the
+    // detached preferences page, even when the MIDI device list is unchanged.
+    pollIfAnyControllersOpen();
+    qInfo() << "Manual MIDI rescan complete";
+    emit devicesChanged();
+}
+
+void ControllerManager::openConfiguredControllers(const QList<Controller*>& deviceList) {
     QStringList mappingPaths(getMappingPaths(m_pConfig));
 
     for (Controller* pController : deviceList) {
@@ -285,7 +334,7 @@ void ControllerManager::slotSetUpDevices() {
         }
         pMapping->loadSettings(m_pConfig, pController->getName());
 
-        // This runs on the main thread but LegacyControllerMapping is not thread safe, so clone it.
+        // Load each controller mapping separately; mappings are not thread safe.
         pController->setMapping(std::move(pMapping));
 
         // If we are in safe mode, skip opening controllers.
@@ -361,7 +410,7 @@ void ControllerManager::slotPollDevices() {
     if (m_skipPoll) {
         // skip poll in overload situation
         m_skipPoll = false;
-        //qDebug() << "ControllerManager::pollDevices() skip";
+        // qDebug() << "ControllerManager::pollDevices() skip";
         return;
     }
 
@@ -376,7 +425,7 @@ void ControllerManager::slotPollDevices() {
     if (duration > kPollInterval) {
         m_skipPoll = true;
     }
-    //qDebug() << "ControllerManager::pollDevices()" << duration << start;
+    // qDebug() << "ControllerManager::pollDevices()" << duration << start;
 }
 
 void ControllerManager::openController(Controller* pController) {
@@ -432,7 +481,6 @@ void ControllerManager::slotApplyMapping(Controller* pController,
     VERIFY_OR_DEBUG_ASSERT(!pMapping->isDirty()) {
         qWarning() << "Mapping is dirty, changes might be lost on restart!";
     }
-
 
     // Save the file path/name in the config so it can be auto-loaded at
     // startup next time

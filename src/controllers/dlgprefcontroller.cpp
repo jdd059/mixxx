@@ -599,6 +599,10 @@ void DlgPrefController::slotApply() {
     setDirty(false);
 }
 
+bool DlgPrefController::hasPendingChanges() const {
+    return isDirty() || (m_pMapping && m_pMapping->isDirty());
+}
+
 QUrl DlgPrefController::helpUrl() const {
     return QUrl(MIXXX_MANUAL_CONTROLLERS_URL);
 }

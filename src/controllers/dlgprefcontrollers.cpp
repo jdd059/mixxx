@@ -44,6 +44,22 @@ DlgPrefControllers::DlgPrefControllers(DlgPreferences* pPreferences,
             this,
             &DlgPrefControllers::rescanControllers);
 
+    connect(btnRescanMidi, &QPushButton::clicked, this, [this]() {
+        for (auto* pPage : std::as_const(m_controllerPages)) {
+            if (pPage->hasPendingChanges()) {
+                txtMidiRescanStatus->setText(
+                        tr("Apply or cancel your controller changes before rescanning"));
+                return;
+            }
+        }
+        // Tear down all UI references on the GUI thread before the worker
+        // deletes any MIDI controllers. Other backend objects remain alive.
+        destroyControllerWidgets();
+        btnRescanMidi->setEnabled(false);
+        txtMidiRescanStatus->setText(tr("Reconnecting MIDI devices..."));
+        m_pControllerManager->rescanMidiDevices();
+    });
+
     // Setting the description text here instead of in the ui file allows to paste
     // a formatted link (text color is a more readable blend of text color and original link color).
     txtMappingsOverview->setText(tr(
@@ -55,10 +71,10 @@ DlgPrefControllers::DlgPrefControllers(DlgPreferences* pPreferences,
             "Folder\" then restart Mixxx. If you download a mapping in a ZIP file, "
             "extract the XML and Javascript file(s) from the ZIP file to your "
             "\"User Mapping Folder\" then restart Mixxx.")
-                                         .arg(coloredLinkString(
-                                                 m_pLinkColor,
-                                                 QStringLiteral("Mixxx Controller Forums"),
-                                                 MIXXX_CONTROLLER_FORUMS_URL)));
+                    .arg(coloredLinkString(
+                            m_pLinkColor,
+                            QStringLiteral("Mixxx Controller Forums"),
+                            MIXXX_CONTROLLER_FORUMS_URL)));
 
     txtHardwareCompatibility->setText(coloredLinkString(
             m_pLinkColor,
@@ -137,12 +153,12 @@ bool DlgPrefControllers::handleTreeItemClick(QTreeWidgetItem* clickedItem) {
 void DlgPrefControllers::rescanControllers() {
     destroyControllerWidgets();
     setupControllerWidgets();
+    btnRescanMidi->setEnabled(true);
+    txtMidiRescanStatus->setText(tr("MIDI devices refreshed"));
 }
 
 void DlgPrefControllers::destroyControllerWidgets() {
-    // NOTE: this assumes that the list of controllers does not change during the lifetime of Mixxx.
-    // This is currently true, but once we support hotplug, we will need better lifecycle management
-    // to keep this dialog and the controllermanager consistent.
+    // Manual rescans detach these widgets before changing the device list.
     QList<Controller*> controllerList =
             m_pControllerManager->getControllerList(false, true);
     for (auto* pController : std::as_const(controllerList)) {
